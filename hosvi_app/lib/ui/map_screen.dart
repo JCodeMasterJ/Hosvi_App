@@ -121,6 +121,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   _Zone? _activeZone;
   String? _selectedHospital;
 
+
   // Usuario / destino
   double? _userLat, _userLon;
   LatLng? _dest;
@@ -136,6 +137,16 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   // Círculos de depuración
   bool _debugShowZonesAlways = true;
   final Set<Circle> _circles = {};
+
+  // Paleta de colores por zona (rotará si hay más zonas)
+  final List<Color> _zoneColors = [
+    Colors.teal,
+    Colors.deepPurple,
+    Colors.orange,
+    Colors.blueGrey,
+    Colors.pinkAccent,
+  ];
+
 
   // --------------------
   // Ciclo de vida
@@ -182,16 +193,19 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   void _rebuildZonesCircles() {
     _circles.clear();
     int i = 0;
+
     for (final z in _zones) {
       for (final c in z.centers) {
+        final col = _colorForHospital(c.name); // <- color por hospital
+
         _circles.add(
           Circle(
             circleId: CircleId('zone_${z.id}_$i'),
             center: LatLng(c.lat, c.lon),
             radius: c.radiusM,
             strokeWidth: 2,
-            strokeColor: Colors.teal.withOpacity(0.9),
-            fillColor: Colors.tealAccent.withOpacity(0.15),
+            strokeColor: col.withOpacity(0.9),
+            fillColor: col.withOpacity(0.15),
           ),
         );
         i++;
@@ -199,6 +213,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     }
     if (mounted) setState(() {});
   }
+
 
   bool _isInside(double lat1, double lon1, _ZoneCenter c) {
     const R = 6371000.0;
@@ -488,24 +503,27 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             Text(
               'Selecciona hospital en\n${z.name}',
               textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
+
+            // Botones coloreados por hospital 👇
             for (final h in z.hospitals)
               Padding(
-                padding:
-                const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
                 child: ElevatedButton(
                   style: ElevatedButton.styleFrom(
+                    backgroundColor: _colorForHospital(h).withOpacity(0.9),
+                    foregroundColor: Colors.white,
                     minimumSize: const Size.fromHeight(56),
+                    shape: const StadiumBorder(),
+                    elevation: 2,
                   ),
                   onPressed: () => Navigator.of(context).pop(h),
-                  child: Text(h),
+                  child: Text(h, overflow: TextOverflow.ellipsis),
                 ),
               ),
+
             const SizedBox(height: 12),
           ],
         ),
@@ -513,10 +531,11 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     );
 
     if (selected == null) return;
-    _polylines.clear(); // ← limpia la anterior
-    _currentRoute = null;          // <-- limpia lo previo
+
+    _polylines.clear();
+    _currentRoute = null;
     _currentStepIdx = 0;
-    _lastRouteUpdate = DateTime(0);            // permite dibujar ya mismo
+    _lastRouteUpdate = DateTime(0);
     setState(() => _selectedHospital = selected);
 
     if (_userLat == null || _userLon == null) return;
@@ -525,17 +544,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     if (targetCenter == null) return;
 
     _dest = LatLng(targetCenter.lat, targetCenter.lon);
-    //_updateDestPolyline();
-    _dest = LatLng(targetCenter.lat, targetCenter.lon);
 
-// si tenemos ubicación del usuario:
     if (_userLat != null && _userLon != null) {
-      await _buildGoogleRoute(
-        LatLng(_userLat!, _userLon!),
-        _dest!,
-      );
+      await _buildGoogleRoute(LatLng(_userLat!, _userLon!), _dest!);
     }
-
 
     if (_ctrl != null && _userLat != null && _userLon != null) {
       final sw = LatLng(
@@ -547,30 +559,30 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         math.max(_userLon!, _dest!.longitude),
       );
       await _ctrl!.animateCamera(
-        CameraUpdate.newLatLngBounds(
-          LatLngBounds(southwest: sw, northeast: ne),
-          80,
-        ),
+        CameraUpdate.newLatLngBounds(LatLngBounds(southwest: sw, northeast: ne), 80),
       );
     }
   }
 
+
   Set<Circle> _buildZoneCircles() {
     final z = _activeZone;
     if (z == null) return {};
-    return z.centers
-        .map(
-          (c) => Circle(
+
+    return z.centers.map((c) {
+      final col = _colorForHospital(c.name); // 👈 color individual por hospital
+
+      return Circle(
         circleId: CircleId('${z.id}_${c.lat}_${c.lon}'),
         center: LatLng(c.lat, c.lon),
         radius: c.radiusM,
-        strokeColor: Colors.teal,
+        strokeColor: col.withOpacity(0.9),
         strokeWidth: 2,
-        fillColor: Colors.teal.withOpacity(0.08),
-      ),
-    )
-        .toSet();
+        fillColor: col.withOpacity(0.15),
+      );
+    }).toSet();
   }
+
 
   String shortHospitalLabel(String name) {
     // Si trae sigla entre paréntesis, úsala (p. ej., "(HUS)")
@@ -595,6 +607,18 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     return candidate.length <= max ? candidate : '${candidate.substring(0, max)}…';
   }
 
+  Color _colorForHospital(String? name) {
+    final n = (name ?? '').toLowerCase();
+    if (n.contains('foscal')) return Colors.indigo.shade400;
+    if (n.contains('cardiovascular') || n.contains('icv')) return Colors.deepOrange.shade400;
+    if (n.contains('ardila')) return Colors.green.shade500;
+    if (n.contains('fosunab')) return Colors.purple.shade400;
+    if (n.contains('hus')) return Colors.teal.shade400;
+    if (n.contains('usta')) return Colors.brown.shade400;
+    return Colors.grey.shade500; // color neutro por defecto
+  }
+
+
   // --------------------
   // UI
   // --------------------
@@ -610,9 +634,15 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     bool primary = false,
     double width = 190,   // ajusta si quieres más angosto (p. ej. 200)
     double height = 44,   // 40–44 es buen tamaño accesible sin ser gigante
+    //olor? color, // 👈 nuevo parámetro opcional
+    Color? customColor,
+
   }) {
-    final bg = primary ? Colors.teal.shade600 : Colors.teal.shade200;
-    final fg = primary ? Colors.white : Colors.teal.shade900;
+    //final bg = primary ? Colors.teal.shade600 : Colors.teal.shade200;
+    //final fg = primary ? Colors.white : Colors.teal.shade900;
+    final bg = customColor ?? (primary ? Colors.teal.shade600 : Colors.teal.shade200);
+    final fg = Colors.white;
+
 
     return ConstrainedBox(
       constraints: BoxConstraints.tightFor(width: width, height: height),
@@ -780,6 +810,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
               primary: false,
               width: 190,
               height: 44,
+              customColor: _colorForHospital(_selectedHospital), // 👈 este es el truco
+              //color: _colorForHospital(_selectedHospital), // 👈 aquí
+              //color: _activeZoneColor.withOpacity(0.9), // 👈 agrega esto
             ),
             const SizedBox(height: 10),
           ],
