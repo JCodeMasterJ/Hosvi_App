@@ -572,9 +572,69 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         .toSet();
   }
 
+  String shortHospitalLabel(String name) {
+    // Si trae sigla entre paréntesis, úsala (p. ej., "(HUS)")
+    final m = RegExp(r'\(([^)]+)\)').firstMatch(name);
+    if (m != null && m.group(1)!.trim().isNotEmpty) {
+      return m.group(1)!.trim();
+    }
+
+    // Si tiene separador con guiones, usa la primera parte
+    final firstPart = name.split(' - ').first.trim();
+
+    // Limpia palabras comunes para acortar
+    final cleaned = firstPart
+        .replaceAll(RegExp(r'\b(Clínica|Hospital|Centro|M[eé]dico|Universitario|de|del|la|el)\b', caseSensitive: false), '')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+
+    final candidate = cleaned.isNotEmpty ? cleaned : firstPart;
+
+    // Limita a 22 chars con puntos suspensivos
+    const max = 22;
+    return candidate.length <= max ? candidate : '${candidate.substring(0, max)}…';
+  }
+
   // --------------------
   // UI
   // --------------------
+
+
+
+
+  Widget _actionFab({
+    required String tag,
+    required String label,
+    required IconData icon,
+    required VoidCallback onPressed,
+    bool primary = false,
+    double width = 190,   // ajusta si quieres más angosto (p. ej. 200)
+    double height = 44,   // 40–44 es buen tamaño accesible sin ser gigante
+  }) {
+    final bg = primary ? Colors.teal.shade600 : Colors.teal.shade200;
+    final fg = primary ? Colors.white : Colors.teal.shade900;
+
+    return ConstrainedBox(
+      constraints: BoxConstraints.tightFor(width: width, height: height),
+      child: FloatingActionButton.extended(
+        heroTag: tag,
+        onPressed: onPressed,
+        label: Text(
+          label,
+          overflow: TextOverflow.ellipsis,
+          maxLines: 1,
+          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+        ),
+        icon: Icon(icon, size: 18),
+        backgroundColor: bg,
+        foregroundColor: fg,
+        elevation: 2,
+        extendedPadding: const EdgeInsets.symmetric(horizontal: 12),
+        shape: const StadiumBorder(),
+        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -694,49 +754,61 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       ),
       floatingActionButton: Column(
         mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          if (_dest != null && _remainingMeters != null)
-            Container(
-              margin: const EdgeInsets.only(bottom: 12),
-              child: FloatingActionButton.extended(
-                heroTag: 'dist',
-                onPressed: () {},
-                label: Text(
-                  'Faltan ${_remainingMeters!.toStringAsFixed(1)} m',
-                ),
-                icon: const Icon(Icons.straighten),
-                backgroundColor: Colors.teal.shade600,
-              ),
+          if (_dest != null && _remainingMeters != null) ...[
+            _actionFab(
+              tag: 'dist',
+              label: 'Faltan ${_remainingMeters!.toStringAsFixed(0)} m',
+              icon: Icons.straighten,
+              onPressed: () {},
+              primary: true,            // píldora dark (resalta)
+              width: 210,               // esta puede ir un pelín más ancha si quieres
+              height: 44,
             ),
-          if (_activeZone != null) ...[
-            FloatingActionButton.extended(
-              heroTag: 'choose-h',
-              onPressed: () => _askHospital(_activeZone!),
-              icon: const Icon(Icons.local_hospital),
-              label: Text(_selectedHospital ?? 'Elegir hospital'),
-            ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 10),
           ],
-          FloatingActionButton.extended(
-            heroTag: 'fit',
+
+          if (_activeZone != null) ...[
+            _actionFab(
+              tag: 'choose-h',
+              label: _selectedHospital == null
+                  ? 'Elegir hospital'
+                  : shortHospitalLabel(_selectedHospital!),
+              icon: Icons.local_hospital,
+              onPressed: () => _askHospital(_activeZone!),
+              primary: false,
+              width: 190,
+              height: 44,
+            ),
+            const SizedBox(height: 10),
+          ],
+
+          _actionFab(
+            tag: 'fit',
+            label: 'Ver puntos',
+            icon: Icons.center_focus_strong,
             onPressed: () {
               final pts = _markers.map((m) => m.position);
               _fitToPoints(pts);
             },
-            icon: const Icon(Icons.center_focus_strong),
-            label: const Text('Ver puntos'),
+            primary: false,
+            width: 190,
+            height: 44,
           ),
-          const SizedBox(height: 12),
-          FloatingActionButton.extended(
-            heroTag: 'follow',
+          const SizedBox(height: 10),
+
+          _actionFab(
+            tag: 'follow',
+            label: _followMe ? 'Siguiéndote' : 'No seguir',
+            icon: _followMe ? Icons.location_searching : Icons.location_disabled,
             onPressed: () {
               setState(() => _followMe = !_followMe);
               if (_followMe) _startFollowMe();
             },
-            icon: Icon(
-              _followMe ? Icons.location_searching : Icons.location_disabled,
-            ),
-            label: Text(_followMe ? 'Siguiéndote' : 'No seguir'),
+            primary: false,
+            width: 190,
+            height: 44,
           ),
         ],
       ),
