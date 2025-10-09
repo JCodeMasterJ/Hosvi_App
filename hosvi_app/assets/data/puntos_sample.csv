@@ -1,0 +1,3 @@
+﻿id,zona,nombre,lat,lon,tipo,riesgo,mensaje,audio_hint,vibro_patron,radio_m,orden
+"t1,Prueba,Punto A,6.2442,-75.5812,cruce,alto,""Atención: cruce peligroso."",""gire a la derecha"",""corto,corto,largo"",12,1"
+"t2,Prueba,Punto B,6.2450,-75.5800,obstaculo,medio,""Obstáculo adelante."",""avance con cuidado"",""corto"",10,2"
