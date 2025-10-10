@@ -8,6 +8,9 @@ class TtsService {
   final FlutterTts _tts = FlutterTts();
   bool _initialized = false;
 
+  double _rate = 0.42; // 👈 velocidad actual
+  String _lang = 'es-CO'; // 👈 idioma activo
+
   /// Inicializa idioma y parámetros de habla.
   /// Llama una sola vez al inicio de la app.
   Future<void> init({
@@ -17,6 +20,8 @@ class TtsService {
     double volume = 1.0,
   }) async {
     if (_initialized) return;
+
+    _rate = rate; // 👈 guarda el valor inicial de velocidad
 
     // Idioma: intenta es-CO, es-ES, es-MX, es-US, o cualquier 'es-*' disponible.
     String langToUse = preferredLang ?? 'es-ES';
@@ -36,8 +41,10 @@ class TtsService {
       langToUse = found;
     }
 
+    _lang = langToUse; // 👈 guarda el idioma elegido
+
     await _tts.setLanguage(langToUse);
-    await _tts.setSpeechRate(rate);
+    await _tts.setSpeechRate(_rate);
     await _tts.setPitch(pitch);
     await _tts.setVolume(volume);
 
@@ -56,6 +63,12 @@ class TtsService {
     // Evita solapamiento
     await _tts.stop();
     await _tts.speak(text);
+  }
+
+  /// Actualiza la velocidad del habla en tiempo real desde accesibilidad.
+  Future<void> updateRate(double rate) async {
+    _rate = rate.clamp(0.3, 1.5); // evita valores fuera del rango
+    await _tts.setSpeechRate(_rate);
   }
 
   Future<void> stop() => _tts.stop();

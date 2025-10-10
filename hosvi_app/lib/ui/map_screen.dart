@@ -18,6 +18,9 @@ import '../features/voice/tts_service.dart';
 import '../features/voice/haptics.dart';
 import 'package:flutter/services.dart' show HapticFeedback;
 
+import '../features/a11y/a11y_settings.dart';
+
+
 
 /// =====================
 /// Modelos internos zona
@@ -632,48 +635,63 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     required IconData icon,
     required VoidCallback onPressed,
     bool primary = false,
-    double width = 190,   // ajusta si quieres más angosto (p. ej. 200)
-    double height = 44,   // 40–44 es buen tamaño accesible sin ser gigante
-    //olor? color, // 👈 nuevo parámetro opcional
+    double width = 190,
+    double height = 44,
     Color? customColor,
-
   }) {
-    //final bg = primary ? Colors.teal.shade600 : Colors.teal.shade200;
-    //final fg = primary ? Colors.white : Colors.teal.shade900;
-    final bg = customColor ?? (primary ? Colors.teal.shade600 : Colors.teal.shade200);
-    final fg = Colors.white;
+    return Consumer(builder: (context, ref, _) {
+      final a11y = ref.watch(a11yProvider); // ← usa tu provider de accesibilidad
 
+      final bg = customColor ??
+          (primary ? Colors.teal.shade600 : Colors.teal.shade200);
+      final fg = Colors.white;
 
-    return ConstrainedBox(
-      constraints: BoxConstraints.tightFor(width: width, height: height),
-      child: FloatingActionButton.extended(
-        heroTag: tag,
-        onPressed: onPressed,
-        label: Text(
-          label,
-          overflow: TextOverflow.ellipsis,
-          maxLines: 1,
-          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+      final h = a11y.bigTargets ? height + 14 : height;
+      final iconSize = 18 * a11y.iconScale;
+
+      return ConstrainedBox(
+        constraints: BoxConstraints.tightFor(width: width, height: h),
+        child: FloatingActionButton.extended(
+          heroTag: tag,
+          onPressed: onPressed,
+          label: Text(
+            label,
+            overflow: TextOverflow.ellipsis,
+            maxLines: 1,
+            style: TextStyle(
+              fontSize: 16 * a11y.textScale,
+              fontWeight: FontWeight.w600,
+            ),
+            semanticsLabel: label, // compatible con lectores de pantalla
+          ),
+          icon: Icon(icon, size: iconSize),
+          backgroundColor: bg,
+          foregroundColor: fg,
+          elevation: 2,
+          extendedPadding: const EdgeInsets.symmetric(horizontal: 12),
+          shape: const StadiumBorder(),
+          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
         ),
-        icon: Icon(icon, size: 18),
-        backgroundColor: bg,
-        foregroundColor: fg,
-        elevation: 2,
-        extendedPadding: const EdgeInsets.symmetric(horizontal: 12),
-        shape: const StadiumBorder(),
-        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-      ),
-    );
+      );
+    });
   }
+
 
   @override
   Widget build(BuildContext context) {
     final pointsAsync = ref.watch(pointsProvider);
+    final a11y = ref.watch(a11yProvider); // 👈 leemos accesibilidad
 
-    return Scaffold(
+    // === UI principal como antes, pero la guardamos en `child` ===
+    final child = Scaffold(
       appBar: AppBar(
         title: const Text('Mapa'),
         actions: [
+          IconButton(
+            tooltip: 'Accesibilidad',
+            onPressed: _openA11ySheet,
+            icon: const Icon(Icons.accessibility_new),
+          ),
           IconButton(
             tooltip: 'Cambiar tipo de mapa',
             onPressed: () {
@@ -792,8 +810,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
               label: 'Faltan ${_remainingMeters!.toStringAsFixed(0)} m',
               icon: Icons.straighten,
               onPressed: () {},
-              primary: true,            // píldora dark (resalta)
-              width: 210,               // esta puede ir un pelín más ancha si quieres
+              primary: true,
+              width: 210,
               height: 44,
             ),
             const SizedBox(height: 10),
@@ -810,9 +828,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
               primary: false,
               width: 190,
               height: 44,
-              customColor: _colorForHospital(_selectedHospital), // 👈 este es el truco
-              //color: _colorForHospital(_selectedHospital), // 👈 aquí
-              //color: _activeZoneColor.withOpacity(0.9), // 👈 agrega esto
+              customColor: _colorForHospital(_selectedHospital),
             ),
             const SizedBox(height: 10),
           ],
@@ -846,34 +862,107 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         ],
       ),
     );
+
+    // matriz de inversión (negativo)
+    const invert = <double>[
+      -1,  0,  0, 0, 255,
+      0, -1,  0, 0, 255,
+      0,  0, -1, 0, 255,
+      0,  0,  0, 1,   0,
+    ];
+
+    // 🔁 devolvemos la UI normal o invertida según el toggle
+    return a11y.highContrast
+        ? ColorFiltered(colorFilter: const ColorFilter.matrix(invert), child: child)
+        : child;
+  }
+
+
+  // ACCESIBILIDAD
+  void _openA11ySheet() {
+    showModalBottomSheet(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (_) => Consumer(builder: (context, ref, __) {
+        final a11y = ref.watch(a11yProvider);
+        final ctrl  = ref.read(a11yProvider.notifier);
+
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('Accesibilidad', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 12),
+
+              SwitchListTile(
+                value: a11y.highContrast,
+                onChanged: ctrl.setHighContrast,
+                title: const Text('Alto contraste (invertido)'),
+              ),
+              SwitchListTile(
+                value: a11y.bigTargets,
+                onChanged: ctrl.setBigTargets,
+                title: const Text('Botones y controles más grandes'),
+              ),
+
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  const Text('Tamaño de texto'),
+                  Expanded(
+                    child: Slider(
+                      value: a11y.textScale,
+                      min: 1.0, max: 1.8,
+                      label: a11y.textScale.toStringAsFixed(1),
+                      onChanged: ctrl.setTextScale,
+                    ),
+                  ),
+                ],
+              ),
+              Row(
+                children: [
+                  const Text('Tamaño de iconos'),
+                  Expanded(
+                    child: Slider(
+                      value: a11y.iconScale,
+                      min: 1.0, max: 1.8,
+                      label: a11y.iconScale.toStringAsFixed(1),
+                      onChanged: ctrl.setIconScale,
+                    ),
+                  ),
+                ],
+              ),
+              Row(
+                children: [
+                  const Text('Velocidad de voz'),
+                  Expanded(
+                    child: Slider(
+                      value: a11y.ttsRate,
+                      min: 0.5, max: 1.25,
+                      label: a11y.ttsRate.toStringAsFixed(2),
+                      onChanged: (v) {
+                        ctrl.setTtsRate(v);
+                        //_tts.setRate(v);   // usa tu servicio TTS
+                        _tts.updateRate(v);
+
+
+                      },
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        );
+      }),
+    );
   }
 }
 
 // --- Helpers turn-by-turn ---
-
-// --- Helpers turn-by-turn ---
-/*extension DirectionsStepSpeech on DirectionsStep {
-  String toSpeech() {
-    final txt = instruction.trim();   // ← ya viene sin HTML desde el service
-    if (txt.isNotEmpty) return txt;
-
-    // Fallback por si no hay instruction y sí hay maneuver
-    switch ((maneuver ?? '').toLowerCase()) {
-      case 'turn-right':
-        return 'Gira a la derecha';
-      case 'turn-left':
-        return 'Gira a la izquierda';
-      case 'straight':
-      case 'continue':
-        return 'Sigue recto';
-      case 'uturn-right':
-      case 'uturn-left':
-        return 'Haz un retorno';
-      default:
-        return 'Sigue recto';
-    }
-  }
-}*/
 
 extension DirectionsStepSpeech on DirectionsStep {
   String toSpeech() {
