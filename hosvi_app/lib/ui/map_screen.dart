@@ -114,6 +114,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   bool _followMe = true;
   MapType _mapType = MapType.normal;
 
+  bool _ready = false;
+
   // Control de frecuencia para redibujar la línea
   DateTime _lastRouteUpdate = DateTime.fromMillisecondsSinceEpoch(0);
   static const _routeMinInterval = Duration(seconds: 2);
@@ -169,13 +171,26 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     super.dispose();
   }
 
-  Future<void> _init() async {
+  /*Future<void> _init() async {
     await _ensureLocationPermission();
     await _loadZones();
     debugPrint('ZONAS CARGADAS: ${_zones.length}');
     _rebuildZonesCircles();
     _startFollowMe();
+  }*/
+  Future<void> _init() async {
+    await _ensureLocationPermission();                 // 1) permiso
+    await _loadZones();                                // 2) zonas
+    try {
+      final p = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.best);
+      _userLat = p.latitude; _userLon = p.longitude;   // 3) primera ubicación
+    } catch (_) {}
+    _rebuildZonesCircles();                            // 4) círculos
+    _recalcActiveZone();                               // 5) activa zona si aplica
+    if (mounted) setState(() => _ready = true);        // 6) listo para pintar
   }
+
 
   // --------------------
   // Zonas
@@ -188,7 +203,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       _zones = data
           .map((e) => _Zone.fromJson(e as Map<String, dynamic>))
           .toList();
-      setState(() {});
+      //setState(() {});
     } catch (e) {
       debugPrint('Error cargando zones.json: $e');
     }
@@ -680,6 +695,16 @@ class _MapScreenState extends ConsumerState<MapScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // 🔹 Si todavía no se han cargado permisos ni zonas, muestra el loader
+    if (!_ready) {
+      return const Scaffold(
+        body: Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
+
+    // 🔹 Si ya está todo listo, sigue con tu código actual:
     final pointsAsync = ref.watch(pointsProvider);
     final a11y = ref.watch(a11yProvider); // 👈 leemos accesibilidad
 
@@ -750,13 +775,13 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                     markers: _markers,
                     circles: _debugShowZonesAlways ? _circles : <Circle>{},
                     polylines: Set<Polyline>.from(_polylines.values),
-                    onMapCreated: (c) async {
-                      _ctrl = c;
-                      await _fitToPoints(
-                        uniquePoints.map((e) => LatLng(e.lat, e.lon)),
-                      );
-                      _startFollowMe();
-                    },
+                      onMapCreated: (c) async {
+                        _ctrl = c;
+                        if (_ready) {
+                          await _fitToPoints(uniquePoints.map((e)=>LatLng(e.lat,e.lon)));
+                          _startFollowMe();
+                        }
+                      },
                   ),
 
                   // Banner zona activa
