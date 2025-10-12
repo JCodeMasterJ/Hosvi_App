@@ -172,6 +172,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   Future<void> _init() async {
     await _ensureLocationPermission();
     await _loadZones();
+    debugPrint('ZONAS CARGADAS: ${_zones.length}');
     _rebuildZonesCircles();
     _startFollowMe();
   }
@@ -449,7 +450,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
 
     //final apiKey = const String.fromEnvironment('MAPS_API_KEY', defaultValue: '');
     // O simplemente pega tu key directa si prefieres:
-     final apiKey = 'AIzaSyDR2cMaHbbnYIy0aABq7Umq2_b8xivo8lI';
+     final apiKey = 'AIzaSyAfqIKPwtnKMwVfHbgdMwaEM7AmRQz7xX8';
 
     final svc = DirectionsService(apiKey);
     final route = await svc.getRoute(origin: origin, destination: destination, mode: _navMode);
