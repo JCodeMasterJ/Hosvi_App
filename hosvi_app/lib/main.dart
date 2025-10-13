@@ -1,20 +1,33 @@
+// lib/main.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:firebase_core/firebase_core.dart';
+import 'firebase_options.dart';
+
 import 'features/voice/tts_service.dart';
-import 'ui/home_screen.dart';
+
+// 👇 imports RELATIVOS para evitar problemas de nombre de paquete
+import 'features/auth/auth_gate.dart';          // el gate
+import 'ui/home_screen.dart';                   // tu pantalla de 3 botones
 import 'ui/debug_points_screen.dart';
 import 'ui/map_screen.dart';
 
-void main() async {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // TTS (singleton) en español, más pausado
+  // 1) Firebase primero
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
+
+  // 2) TTS
   await TtsService.instance.init(
     preferredLang: 'es-CO',
     rate: 0.42,
   );
 
+  // 3) Riverpod + App
   runApp(const ProviderScope(child: HosviApp()));
 }
 
@@ -23,37 +36,30 @@ class HosviApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Tema base claro
-    final ThemeData light = ThemeData(
+    final light = ThemeData(
       colorSchemeSeed: Colors.teal,
       brightness: Brightness.light,
       useMaterial3: true,
       visualDensity: VisualDensity.adaptivePlatformDensity,
     );
-
-    // Tema base oscuro
-    final ThemeData dark = ThemeData(
+    final dark = ThemeData(
       colorSchemeSeed: Colors.teal,
       brightness: Brightness.dark,
       useMaterial3: true,
       visualDensity: VisualDensity.adaptivePlatformDensity,
     );
-
-    // Variantes de alto contraste (se activarán cuando las pidamos)
-    final ThemeData highContrastLight = light.copyWith(
+    final highContrastLight = light.copyWith(
       colorScheme: light.colorScheme.copyWith(
         primary: Colors.black,
         secondary: Colors.black87,
         surface: Colors.white,
       ),
       textTheme: light.textTheme.apply(
-        // más “peso” para legibilidad
         bodyColor: Colors.black,
         displayColor: Colors.black,
       ),
     );
-
-    final ThemeData highContrastDark = dark.copyWith(
+    final highContrastDark = dark.copyWith(
       colorScheme: dark.colorScheme.copyWith(
         primary: Colors.white,
         secondary: Colors.white70,
@@ -68,22 +74,18 @@ class HosviApp extends StatelessWidget {
     return MaterialApp(
       title: 'HOSVI APP',
       debugShowCheckedModeBanner: false,
-
-      // Temas preparados (por ahora se verán como siempre;
-      // más adelante prenderemos el alto contraste desde la UI)
       theme: light,
       darkTheme: dark,
       highContrastTheme: highContrastLight,
       highContrastDarkTheme: highContrastDark,
       themeMode: ThemeMode.system,
 
-      // Si quisieras fijar un factor global de texto más adelante,
-      // lo haremos en `builder` con MediaQuery (por ahora default).
-      builder: (context, child) => child!,
+      // 👉 IMPORTANTÍSIMO: arrancamos por el AuthGate
+      home: const AuthGate(),
 
-      initialRoute: "/map",
+      // Rutas auxiliares (puedes seguir navegando por nombre si quieres)
       routes: {
-        "/": (_) => const HomeScreen(),
+        "/home": (_) => const HomeScreen(),
         "/debug": (_) => const DebugPointsScreen(),
         "/map": (_) => const MapScreen(),
       },

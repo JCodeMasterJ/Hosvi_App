@@ -1,18 +1,1 @@
-
-{
-  "hosting": {
-    "public": "public",
-    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
-    "headers": [
-      {
-        "source": "apk/**",
-        "headers": [
-          { "key": "Cache-Control", "value": "no-cache" },
-          { "key": "Content-Type", "value": "application/vnd.android.package-archive" },
-          { "key": "Content-Disposition", "value": "attachment; filename=\"HOSVI-App.apk\"" }
-        ]
-      }
-    ]
-  }
-}
-
+{"hosting":{"public":"public","ignore":["firebase.json","**/.*","**/node_modules/**"],"headers":[{"source":"apk/**","headers":[{"key":"Cache-Control","value":"no-cache"},{"key":"Content-Type","value":"application/vnd.android.package-archive"},{"key":"Content-Disposition","value":"attachment; filename=\"HOSVI-App.apk\""}]}]},"flutter":{"platforms":{"android":{"default":{"projectId":"hosvi-app-2","appId":"1:255001518109:android:63c540fba17d64ce2e66f4","fileOutput":"android/app/google-services.json"}},"dart":{"lib/firebase_options.dart":{"projectId":"hosvi-app-2","configurations":{"android":"1:255001518109:android:63c540fba17d64ce2e66f4","web":"1:255001518109:web:3c17fe7e229f64de2e66f4"}}}}}}

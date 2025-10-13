@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "255001518109",
+    "project_id": "hosvi-app-2",
+    "storage_bucket": "hosvi-app-2.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:255001518109:android:63c540fba17d64ce2e66f4",
+        "android_client_info": {
+          "package_name": "com.hosvi.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA4wh56ZQfLfK0_QbxzeStaBOXPbKE-Bag"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
