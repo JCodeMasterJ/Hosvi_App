@@ -21,8 +21,8 @@
     "id": "zona_buca",
     "name": "Hospital Universitario de Santander (HUS)",
     "centers": [
-      {"name": "USTA - PRUEBA", "lat": 7.128220219332462, "lon": -73.11397306116474, "radius_m": 900},
-      {"name": "Hospital Universitario de Santander (HUS)", "lat": 7.137167515579143, "lon": -73.12807670534494, "radius_m": 900}
+      {"name": "Hospital Universitario de Santander (HUS)", "lat": 7.128220219332462, "lon": -73.11397306116474, "radius_m": 900},
+      {"name": "USTA - PRUEBA", "lat": 7.137167515579143, "lon": -73.12807670534494, "radius_m": 900}
     ],
     "hospitals": [
       "Hospital Universitario de Santander (HUS)",

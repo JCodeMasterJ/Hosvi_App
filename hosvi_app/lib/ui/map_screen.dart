@@ -473,10 +473,17 @@ class _MapScreenState extends ConsumerState<MapScreen> {
 
     _currentRoute = route;
 
+    // NEW: actualiza distancia apenas tengas la ruta
+    if (_userLat != null && _userLon != null && _dest != null) {
+      _remainingMeters = _distMeters(
+        _userLat!, _userLon!, _dest!.latitude, _dest!.longitude,
+      );
+    }
+
     // Limpiar línea recta si existía
     _polylines.remove(_destPolylineId);
 
-// Primer step de la ruta
+    // Primer step de la ruta
     _currentStepIdx = 0;
     if (_currentRoute!.steps.isNotEmpty) {
       _say(_currentRoute!.steps.first);
@@ -563,6 +570,14 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     if (targetCenter == null) return;
 
     _dest = LatLng(targetCenter.lat, targetCenter.lon);
+
+    // NEW: calcula la distancia inicial para que el pill aparezca de una vez
+    if (_userLat != null && _userLon != null) {
+      _remainingMeters = _distMeters(
+        _userLat!, _userLon!, _dest!.latitude, _dest!.longitude,
+      );
+      if (mounted) setState(() {});
+    }
 
     if (_userLat != null && _userLon != null) {
       await _buildGoogleRoute(LatLng(_userLat!, _userLon!), _dest!);
