@@ -18,23 +18,26 @@ class HomeScreen extends ConsumerWidget {
         child: Column(
           children: [
             const Spacer(),
-            ElevatedButton(
+            ElevatedButton.icon(
               style: btnStyle,
               //onPressed: () => Navigator.pushNamed(context, "/debug"),
               onPressed: () => Navigator.of(context).pushNamed('/map'),
-              child: const Text("Iniciar guía"),
+              icon: const Icon(Icons.navigation), // 👈 el icono va aquí
+              label: const Text("Iniciar guía"),
             ),
             const SizedBox(height: 12),
-            ElevatedButton(
+            ElevatedButton.icon(
               style: btnStyle,
               onPressed: () {}, // se activa en Fase 3
-              child: const Text("Hablar / Comando"),
+              icon: const Icon(Icons.accessible_forward),
+              label: const Text("Ver accesos cercanos"),
             ),
             const SizedBox(height: 12),
-            ElevatedButton(
+            ElevatedButton.icon(
               style: btnStyle,
               onPressed: () {}, // se activa en Fase 2
-              child: const Text("Modo feedback: Voz + Beep"),
+              icon: const Icon(Icons.explore),
+              label: const Text("Modo simulación"),
             ),
             const Spacer(),
             Text("Activa TalkBack para probar accesibilidad",
