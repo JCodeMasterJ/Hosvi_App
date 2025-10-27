@@ -28,16 +28,16 @@ class HomeScreen extends ConsumerWidget {
             const SizedBox(height: 12),
             ElevatedButton.icon(
               style: btnStyle,
-              onPressed: () {}, // se activa en Fase 3
-              icon: const Icon(Icons.accessible_forward),
-              label: const Text("Ver accesos cercanos"),
+              onPressed: () {}, // se activa en Fase 2
+              icon: const Icon(Icons.explore),
+              label: const Text("Modo simulación"),
             ),
             const SizedBox(height: 12),
             ElevatedButton.icon(
               style: btnStyle,
-              onPressed: () {}, // se activa en Fase 2
-              icon: const Icon(Icons.explore),
-              label: const Text("Modo simulación"),
+              onPressed: () {}, // se activa en Fase 3
+              icon: const Icon(Icons.accessible_forward),
+              label: const Text("Ver accesos cercanos"),
             ),
             const Spacer(),
             Text("Activa TalkBack para probar accesibilidad",

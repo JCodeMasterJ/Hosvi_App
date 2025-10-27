@@ -38,7 +38,7 @@
         <!-- PA LO DEL MAPA WEY-->
         <meta-data
             android:name="com.google.android.geo.API_KEY"
-            android:value="AIzaSyDR2cMaHbbnYIy0aABq7Umq2_b8xivo8lI"/>
+            android:value="${MAPS_API_KEY}"/>
 
     </application>
     <!-- Required to query activities that can process text, see:

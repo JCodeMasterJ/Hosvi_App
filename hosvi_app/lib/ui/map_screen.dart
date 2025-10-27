@@ -465,7 +465,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
 
     //final apiKey = const String.fromEnvironment('MAPS_API_KEY', defaultValue: '');
     // O simplemente pega tu key directa si prefieres:
-     final apiKey = 'AIzaSyAfqIKPwtnKMwVfHbgdMwaEM7AmRQz7xX8';
+    final apiKey = const String.fromEnvironment('MAPS_API_KEY', defaultValue: '');
 
     final svc = DirectionsService(apiKey);
     final route = await svc.getRoute(origin: origin, destination: destination, mode: _navMode);
