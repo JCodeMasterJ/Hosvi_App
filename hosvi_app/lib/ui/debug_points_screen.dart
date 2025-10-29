@@ -9,7 +9,9 @@ import '../data/points_repository.dart';
 //const String _assetPath = 'assets/data/puntos_full_normalized_arreglado.csv';
 // const String _assetPath = 'assets/data/puntos_sample.csv';
 
-const String _assetPath = 'assets/data/puntos_hospitales.csv';
+//const String _assetPath = 'assets/data/puntos_hospitales.csv';
+const String _assetPath = 'assets/data/PUNTOS_TOTALES_ACTUALIZADOS.csv';
+
 final pointsProvider = FutureProvider<List<PointInfo>>((ref) async {
   final repo = PointsRepository(assetPath: _assetPath);
   final res = await repo.load();

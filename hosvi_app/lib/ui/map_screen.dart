@@ -83,7 +83,8 @@ DateTime _lastTts = DateTime(0);
 /// =======================
 
 final pointsProvider = FutureProvider<List<PointInfo>>((ref) async {
-  const String _assetPath = 'assets/data/puntos_hospitales.csv';
+  //const String _assetPath = 'assets/data/puntos_hospitales.csv';
+  const String _assetPath = 'assets/data/PUNTOS_TOTALES_ACTUALIZADOS.csv';
   final repo = PointsRepository(assetPath: _assetPath);
   final res = await repo.load();
   return switch (res) {
