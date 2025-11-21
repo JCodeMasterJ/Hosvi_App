@@ -106,7 +106,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     autofillHints: const [AutofillHints.username, AutofillHints.email],
                     decoration: const InputDecoration(
                       labelText: 'Correo',
-                      hintText: 'tucorreo@dominio.com',
+                      hintText: 'tucorreo@ustabuca.edu.co',
                     ),
                     validator: (v) {
                       final text = v?.trim() ?? '';

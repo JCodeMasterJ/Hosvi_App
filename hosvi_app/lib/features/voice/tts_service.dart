@@ -54,6 +54,9 @@ class TtsService {
     _initialized = true;
   }
 
+  
+
+
   /// Hablar un texto. Si no se llamó init() antes, lo hace con valores por defecto.
   Future<void> speak(String text) async {
     if (text.trim().isEmpty) return;

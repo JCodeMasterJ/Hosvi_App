@@ -20,7 +20,10 @@ import 'package:flutter/services.dart' show HapticFeedback;
 
 import '../features/a11y/a11y_settings.dart';
 
-
+import '../features/voice/instructions.dart';
+import '../features/voice/poi_announcer.dart';
+import '../features/voice/route_progress.dart';
+import '../domain/zones.dart';
 
 /// =====================
 /// Modelos internos zona
@@ -110,7 +113,21 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   final _markers = <Marker>{};
   final Map<PolylineId, Polyline> _polylines = {};
 
+
+  late final TtsService _tts;
+  late final Haptics _haptics;
+  late final InstructionSpeaker _speaker;
+  late final PoiAnnouncer _poi;
+
+  // referencias útiles si no existen
+  // Step actual, distancia a la próxima maniobra, lista de POIs visibles
+  dynamic _nextStep; // usa tu tipo real de "step"
+  double _distToNextM = 0;
+  //Iterable<RouteNode> get _visiblePois => _pointsFiltered; // adapta a tu lista real
+  late final RouteProgress _prog;
+
   StreamSubscription<Position>? _posSub;
+  final List<RouteNode> _allPois = [];
 
   bool _followMe = true;
   MapType _mapType = MapType.normal;
@@ -153,6 +170,65 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     Colors.pinkAccent,
   ];
 
+// Guarda todos los puntos cargados (únicos por id)
+  List<PointInfo> _allPoints = [];
+
+// Los POIs visibles en la zona activa, en el formato que espera el announcer
+  /*Iterable<RouteNode> get _visiblePois sync* {
+    if (_allPoints.isEmpty) return;
+
+    for (final p in _allPoints) {
+      // Si tienes zona activa, filtra por la unión de círculos de esa zona:
+      if (_activeZone != null) {
+        final inside = _activeZone!.centers.any(
+              (c) => _distMeters(p.lat, p.lon, c.lat, c.lon) <= c.radiusM,
+        );
+        if (!inside) continue;
+      }
+
+      // Mapea PointInfo -> RouteNode (usa los campos reales de tu modelo)
+      yield RouteNode(
+        lat: p.lat,
+        lon: p.lon,
+        nombre: p.nombre,
+        mensaje: p.mensaje,
+        riesgo: p.riesgo,
+        radioM: p.radioM?.toDouble(),
+        orden: p.orden,
+        hospitals: (p.hospitals?.isNotEmpty ?? false)
+            ? [p.hospitals!]   // tu CSV trae un string; si fuese lista, adáptalo
+            : const [],
+      );
+    }
+  }*/
+  String _safeHospitalsOf(RouteNode p) {
+    try {
+      final dyn = (p as dynamic);
+      final val = dyn.hospitals;
+      if (val is String) return val;
+      if (val is List && val.isNotEmpty) return val.join(' ');
+    } catch (_) {}
+    return '';
+  }
+
+  Iterable<RouteNode> get _visiblePois sync* {
+    for (final p in _allPois) {
+      // Filtra por zona activa
+      if (_activeZone != null &&
+          !_activeZone!.centers.any((c) => _isInside(p.lat, p.lon, c))) {
+        continue;
+      }
+      // Filtra por hospital seleccionado (si aplica)
+      if (_selectedHospital != null) {
+        final hosp = _safeHospitalsOf(p); // helper abajo
+        if (!hosp.toLowerCase().contains(_selectedHospital!.toLowerCase())) {
+          continue;
+        }
+      }
+      yield p;
+    }
+  }
+
 
   // --------------------
   // Ciclo de vida
@@ -162,6 +238,19 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   @override
   void initState() {
     super.initState();
+    //_tts = TtsService();
+    _tts = TtsService.instance;
+    _haptics = Haptics();
+    _speaker = InstructionSpeaker(_tts, _haptics);
+    //_poi = PoiAnnouncer(_tts, _haptics);
+    _poi = PoiAnnouncer(
+      tts: _tts,
+      haptics: _haptics,
+      getVisiblePois: () => _visiblePois,          // 👈 fuente de POIs
+      speakNearMeters: 18,                          // umbral corto y amable
+      minSpeakGap: const Duration(seconds: 18),     // anti-spam
+    );
+    _prog = RouteProgress(advanceRadiusM: 8); // 8 m para “Ahora”
     _init();
   }
 
@@ -328,27 +417,45 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       distanceFilter: 3, // redibuja cada ~3m
     );
 
+    // ===== estado mínimo para no repetir avisos (déjalo justo arriba de la asignación) =====
+    DateTime __lastStepCue = DateTime.fromMillisecondsSinceEpoch(0);
+    String?  __lastBucket;                  // 'prep' | 'near' | 'now'
+    int?     __lastAnnouncedStepIdx;
+
+    // ===== suscripción a la posición =====
     _posSub = Geolocator.getPositionStream(locationSettings: settings).listen((pos) async {
+      // Umbrales sencillos (m)
+      const double _prepM = 60;   // "Prepárate"
+      const double _nearM = 25;   // "En XX m"
+      const double _nowM  = 8;    // "Ahora"
+      const Duration _cueGap = Duration(seconds: 6); // anti-spam
+
       _userLat = pos.latitude;
       _userLon = pos.longitude;
-      // debug: print('📍 pos: $_userLat, $_userLon');
 
-      // 1) Detecta zona
+      // 🔊 anunciar POIs visibles con cada actualización
+      if (_userLat != null && _userLon != null) {
+        _poi.updateUserPos(_userLat!, _userLon!);
+      }
+
+      // 1) Zona activa
       _recalcActiveZone();
 
       // 2) Navegación
       if (_dest != null) {
-        // Si aún NO hay ruta de Google, constrúyela apenas tengamos fix:
+        // Construir ruta la primera vez que haya fix
         if (_currentRoute == null && _userLat != null && _userLon != null) {
           await _buildGoogleRoute(LatLng(_userLat!, _userLon!), _dest!);
         } else if (_currentRoute != null) {
-          // Re‐ruta simple si “te sales” o cada ~5s
+          // Re-ruta simple si te alejaste bastante o cada ~5 s
           final distToDest = _distMeters(_userLat!, _userLon!, _dest!.latitude, _dest!.longitude);
           final now = DateTime.now();
           final shouldReroute = distToDest > 50 && now.difference(_lastRouteUpdate) > const Duration(seconds: 5);
           if (shouldReroute) {
             _lastRouteUpdate = now;
             await _buildGoogleRoute(LatLng(_userLat!, _userLon!), _dest!);
+            __lastBucket = null;               // 👉 evita silencios largos tras reruta
+            __lastAnnouncedStepIdx = null;
           }
 
           _remainingMeters = distToDest;
@@ -357,44 +464,86 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           if (steps.isNotEmpty && _currentStepIdx < steps.length) {
             final step = steps[_currentStepIdx];
 
-            // Usamos el punto final del step
+            // Punto objetivo del paso actual (fin del step)
             final LatLng endPoint = step.endLocation;
 
-            // Distancia del usuario al fin del step
-            final dStep = _distMeters(
-              _userLat!, _userLon!, endPoint.latitude, endPoint.longitude,
-            );
+            // Distancia del usuario a ese punto
+            final dStep = _distMeters(_userLat!, _userLon!, endPoint.latitude, endPoint.longitude);
 
+            // ====== AVISOS CORTOS por distancia (voz + vibración) ======
+            // bucket por cercanía
+            String? bucket;
+            if (dStep <= _nowM)      bucket = 'now';
+            else if (dStep <= _nearM) bucket = 'near';
+            else if (dStep <= _prepM) bucket = 'prep';
+
+            if (bucket != null) {
+              final tooSoon = DateTime.now().difference(__lastStepCue) < _cueGap;
+              final repeated = (__lastAnnouncedStepIdx == _currentStepIdx && __lastBucket == bucket);
+              if (!tooSoon && !repeated) {
+                // Mensajes muy cortos y amables. Reutilizamos tu _say(step) para no tocar servicios TTS.
+                // (Así usas la misma voz/idioma que ya tenías configurado)
+                switch (bucket) {
+                  case 'prep':
+                  // toque leve + instrucción del step
+                    HapticFeedback.selectionClick();
+                    _say(step);
+                    break;
+                  case 'near':
+                  // vibración media + instrucción del step
+                    HapticFeedback.mediumImpact();
+                    _say(step);
+                    break;
+                  case 'now':
+                  // vibración fuerte + instrucción del step
+                    HapticFeedback.heavyImpact();
+                    _say(step);
+                    break;
+                }
+                __lastStepCue = DateTime.now();
+                __lastBucket = bucket;
+                __lastAnnouncedStepIdx = _currentStepIdx;
+              }
+            }
+            // ====== FIN AVISOS ======
+
+            // Avance de paso cuando realmente llegas al punto
             if (dStep <= _stepAdvanceRadius) {
               _currentStepIdx = (_currentStepIdx + 1).clamp(0, steps.length - 1);
               if (_currentStepIdx < steps.length) {
-                //Haptics.medium();
                 HapticFeedback.mediumImpact();
-
-                _say(steps[_currentStepIdx]);
+                _say(steps[_currentStepIdx]); // ya lo tenías
+                // resetea el anti-spam para el nuevo step
+                __lastBucket = null;
+                __lastAnnouncedStepIdx = null;
               }
             }
           }
 
-
           if (_remainingMeters! < 20) {
-            // TODO: TTS("Has llegado")
+            // Llegada
+            HapticFeedback.heavyImpact();
+            // si tienes un TTS de llegada, puedes decirlo aquí
+            // _tts.speak('Has llegado');
             _currentRoute = null;
-            _clearRoute(); // limpia _dest, _polylines, etc.
+            _clearRoute();
           } else if (mounted) {
-            setState(() {}); // refresca pill de distancia
+            setState(() {}); // refresca la pill de distancia
           }
         }
       }
 
-
-      // 3) Seguir cámara
+      // 3) Cámara siguiendo al usuario (lo que ya tenías)
       if (_followMe && _ctrl != null) {
         await _ctrl!.animateCamera(
           CameraUpdate.newLatLng(LatLng(_userLat!, _userLon!)),
         );
       }
+
+      // (Opcional) Si ya tienes un método para POIs, podrías llamarlo aquí:
+      // _checkPoisAndAnnounce(_userLat!, _userLon!);
     });
+
   }
 
 
@@ -442,8 +591,11 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final p1 = LatLng(_userLat!, _userLon!);
     final p2 = _dest!;
 
+    // _remainingMeters = _distMeters(
+    //   p1.latitude, p1.longitude, p2.latitude, p2.longitude,
+    // );
     _remainingMeters = _distMeters(
-      p1.latitude, p1.longitude, p2.latitude, p2.longitude,
+        _userLat!, _userLon!, _dest!.latitude, _dest!.longitude
     );
 
     final poly = Polyline(
@@ -473,6 +625,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     if (route == null) return;
 
     _currentRoute = route;
+    _prog.setRoute(_currentRoute);
 
     // NEW: actualiza distancia apenas tengas la ruta
     if (_userLat != null && _userLon != null && _dest != null) {
@@ -575,13 +728,14 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     // NEW: calcula la distancia inicial para que el pill aparezca de una vez
     if (_userLat != null && _userLon != null) {
       _remainingMeters = _distMeters(
-        _userLat!, _userLon!, _dest!.latitude, _dest!.longitude,
+          _userLat!, _userLon!, _dest!.latitude, _dest!.longitude,
       );
       if (mounted) setState(() {});
     }
 
     if (_userLat != null && _userLon != null) {
       await _buildGoogleRoute(LatLng(_userLat!, _userLon!), _dest!);
+      _poi.updateUserPos(_userLat!, _userLon!);
     }
 
     if (_ctrl != null && _userLat != null && _userLon != null) {
@@ -756,6 +910,35 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             for (final p in points) p.id: p,
           };
           final uniquePoints = uniqueById.values.toList();
+          _allPoints = uniquePoints;  // 👈 deja disponibles los POIs para el announcer
+
+          // Construye los POIs que usará el announcer
+          _allPois
+            ..clear()
+            ..addAll(uniquePoints.map((p) {
+              // Lee hospitales de forma segura, tu modelo PointInfo a veces no lo trae
+              String hospitalsStr = '';
+              try {
+                final dyn = (p as dynamic);
+                final h = dyn.hospitals;                  // puede no existir
+                if (h is String) hospitalsStr = h;
+                if (h is List && h.isNotEmpty) {
+                  hospitalsStr = h.join(' ');
+                }
+              } catch (_) {}
+
+              return RouteNode(
+                lat: p.lat,
+                lon: p.lon,
+                nombre: p.nombre,
+                mensaje: p.mensaje,
+                riesgo: p.riesgo,
+                radioM: (p.radioM ?? 12).toDouble(),
+                orden: p.orden,
+                hospitals: hospitalsStr.isEmpty ? const [] : [hospitalsStr],
+              );
+            }));
+
 
           _markers
             ..clear()
