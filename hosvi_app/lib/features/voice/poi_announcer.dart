@@ -90,6 +90,7 @@ class PoiAnnouncer {
   final Iterable<RouteNode> Function() getVisiblePois;
   final double speakNearMeters;
   final Duration minSpeakGap;
+  bool isMuted = false;
 
   // Anti-spam por POI
   final Map<String, DateTime> _cooldown = {};
@@ -111,9 +112,16 @@ class PoiAnnouncer {
     _checkAndAnnounce();
   }
 
+  void muteFor(Duration dur) {
+    isMuted = true;
+    Future.delayed(dur, () => isMuted = false);
+  }
+
+
   // --- Interno --------------------------------------------------------------
 
   void _checkAndAnnounce() {
+    if (isMuted) return;
     if (_uLat == null || _uLon == null) return;
 
     final now = DateTime.now();

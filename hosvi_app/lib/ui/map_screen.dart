@@ -24,6 +24,8 @@ import '../features/voice/instructions.dart';
 import '../features/voice/poi_announcer.dart';
 import '../features/voice/route_progress.dart';
 import '../domain/zones.dart';
+import '../features/navigation/zone_service.dart';
+
 
 /// =====================
 /// Modelos internos zona
@@ -118,6 +120,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   late final Haptics _haptics;
   late final InstructionSpeaker _speaker;
   late final PoiAnnouncer _poi;
+  late final ZoneService _zoneService;
+
 
   // referencias útiles si no existen
   // Step actual, distancia a la próxima maniobra, lista de POIs visibles
@@ -243,6 +247,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     _haptics = Haptics();
     _speaker = InstructionSpeaker(_tts, _haptics);
     //_poi = PoiAnnouncer(_tts, _haptics);
+    _zoneService = ZoneService(_speaker);
     _poi = PoiAnnouncer(
       tts: _tts,
       haptics: _haptics,
@@ -439,7 +444,42 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       }
 
       // 1) Zona activa
-      _recalcActiveZone();
+      if (_userLat != null && _userLon != null) {
+        final activeZones = _zoneService.detectActiveZones(
+          zones: _zones.map((z) {
+            // Convertimos _Zone → Zone (modelo real)
+            final centers = z.centers
+                .map((c) => ZoneCenter(name: c.name, lat: c.lat, lon: c.lon, radiusM: c.radiusM))
+                .toList();
+
+            return Zone(
+              id: z.id,
+              name: z.name,
+              centers: centers,
+              hospitals: z.hospitals,
+            );
+          }).toList(),
+          userLat: _userLat!,
+          userLon: _userLon!,
+        );
+
+        // Seleccionamos la principal (modelo: Zone)
+        if (activeZones.isNotEmpty) {
+          final primary = activeZones.first;
+
+          // Buscamos su equivalente en la lista UI (_Zone)
+          _activeZone = _zones.firstWhere(
+                (zz) => zz.id == primary.id,
+            orElse: () => _zones.first,
+          );
+        } else {
+          _activeZone = null;
+        }
+
+        if (mounted) setState(() {});
+      }
+
+
 
       // 2) Navegación
       if (_dest != null) {
@@ -712,6 +752,12 @@ class _MapScreenState extends ConsumerState<MapScreen> {
 
     if (selected == null) return;
 
+    // 🔊 Anuncio por voz del hospital escogido
+    //_tts.speak('Destino seleccionado: $selected');
+    await _tts.speakBlocking('Destino seleccionado: $selected');
+
+
+
     _polylines.clear();
     _currentRoute = null;
     _currentStepIdx = 0;
@@ -974,16 +1020,22 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                     markers: _markers,
                     circles: _debugShowZonesAlways ? _circles : <Circle>{},
                     polylines: Set<Polyline>.from(_polylines.values),
-                      onMapCreated: (c) async {
-                        _ctrl = c;
-                        if (_ready) {
-                          await _fitToPoints(uniquePoints.map((e)=>LatLng(e.lat,e.lon)));
-                          _startFollowMe();
-                        }
-                      },
+                    onMapCreated: (c) async {
+                      _ctrl = c;
+                      if (_ready) {
+                        await _fitToPoints(
+                          uniquePoints.map(
+                                (e) => LatLng(e.lat, e.lon),
+                          ),
+                        );
+                        _startFollowMe();
+                      }
+                    },
                   ),
 
+                  // -------------------------
                   // Banner zona activa
+                  // -------------------------
                   if (_activeZone != null)
                     Positioned(
                       top: 12,
@@ -1001,19 +1053,37 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              const Icon(Icons.shield_outlined,
-                                  size: 18, color: Colors.teal),
+                              const Icon(
+                                Icons.shield_outlined,
+                                size: 18,
+                                color: Colors.teal,
+                              ),
                               const SizedBox(width: 8),
+
                               Flexible(
-                                child: Text(
-                                  'Zona activa: ${_activeZone!.name}',
-                                  textAlign: TextAlign.center,
-                                  style: const TextStyle(
-                                    color: Colors.teal,
-                                    fontWeight: FontWeight.w600,
-                                  ),
+                                child: Builder(
+                                  builder: (_) {
+                                    final nearestCenter =
+                                    _activeZone!.centers.reduce((a, b) {
+                                      final da = _distMeters(
+                                          _userLat!, _userLon!, a.lat, a.lon);
+                                      final db = _distMeters(
+                                          _userLat!, _userLon!, b.lat, b.lon);
+                                      return da < db ? a : b;
+                                    });
+
+                                    return Text(
+                                      'Zona activa: ${nearestCenter.name}',
+                                      textAlign: TextAlign.center,
+                                      style: const TextStyle(
+                                        color: Colors.teal,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    );
+                                  },
                                 ),
                               ),
+
                             ],
                           ),
                         ),

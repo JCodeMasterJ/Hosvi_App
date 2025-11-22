@@ -3,13 +3,15 @@ import 'dart:math' as math;
 
 /// Centro de una subzona circular que compone una zona (union de círculos)
 class ZoneCenter {
+  final String? name;      // ⬅️ NUEVO
   final double lat;
   final double lon;
   final double radiusM;
 
-  const ZoneCenter({required this.lat, required this.lon, required this.radiusM});
+  const ZoneCenter({this.name,required this.lat, required this.lon, required this.radiusM});
 
   factory ZoneCenter.fromJson(Map<String, dynamic> j) => ZoneCenter(
+    name: j['name'] as String?,
     lat: (j['lat'] as num).toDouble(),
     lon: (j['lon'] as num).toDouble(),
     radiusM: (j['radius_m'] as num).toDouble(),

@@ -1,39 +1,93 @@
 // lib/features/navigation/zone_service.dart
+
 import 'dart:math' as math;
 import '../../domain/zones.dart';
+import '../voice/instructions.dart';
 
 class ZoneService {
   Zone? _lastZone;
+  bool _firstCheckDone = false;
 
-  Zone? detectActiveZone({
+  final InstructionSpeaker speaker;
+  ZoneService(this.speaker);
+
+  /// Detecta la(s) zona(s) activa(s) y dispara eventos de entrada/salida.
+  List<Zone> detectActiveZones({
     required List<Zone> zones,
     required double userLat,
     required double userLon,
   }) {
+    // 1. Filtrar zonas donde el usuario está dentro
+    final active = <Zone>[];
     for (final z in zones) {
       if (z.contains(userLat, userLon)) {
-        _lastZone = z;
-        return z;
+        active.add(z);
       }
     }
-    // Si estaba en zona y salió, _lastZone se queda por si necesitas evento de salida
-    return null;
+
+    // 2. No hay zonas activas
+    if (active.isEmpty) {
+      if (_lastZone != null) {
+        speaker.speakExitedZone();
+      } else if (!_firstCheckDone) {
+        speaker.speakNoZoneAvailable();
+      }
+
+      _lastZone = null;
+      _firstCheckDone = true;
+      return [];
+    }
+
+    // 3. Sí hay zonas activas → tomamos la principal
+    final primary = active.first;
+
+    // Función auxiliar: hallar centro más cercano
+    ZoneCenter nearestCenter(Zone z) {
+      return z.centers.reduce((a, b) {
+        final da = _haversineM(userLat, userLon, a.lat, a.lon);
+        final db = _haversineM(userLat, userLon, b.lat, b.lon);
+        return da < db ? a : b;
+      });
+    }
+
+    // ---- A. Primera detección estando dentro de una zona ----
+    if (_lastZone == null && !_firstCheckDone) {
+      final n = nearestCenter(primary);
+      speaker.speakEnteredZone(n.name ?? primary.name);
+    }
+
+    // ---- B. Cambio de zona respecto a la última detectada ----
+    if (_lastZone != null && _lastZone!.id != primary.id) {
+      final n = nearestCenter(primary);
+      speaker.speakEnteredZone(n.name ?? primary.name);
+    }
+
+    // ---- C. Caso especial:
+    // App ya había hecho el primer check, _lastZone era null (ejemplo:
+    // app reiniciada dentro de zona), pero hay una zona activa ahora
+    if (_firstCheckDone && _lastZone == null) {
+      final n = nearestCenter(primary);
+      speaker.speakEnteredZone(n.name ?? primary.name);
+    }
+
+    _lastZone = primary;
+    _firstCheckDone = true;
+
+    return active;
   }
 
-  bool get wasInZone => _lastZone != null;
+  bool get isInsideZone => _lastZone != null;
+  Zone? get currentZone => _lastZone;
 
-  /// Construye una ruta v1:
-  ///  - Filtra puntos por hospital elegido (columna 'hospitals' que trae valores separados por ';')
-  ///  - Ordena por 'orden'
-  ///  - Elige un start cercano al usuario y un end candidato por heurística (palabras clave)
-  ///  - Devuelve sublista desde start -> end (o viceversa) según cuál quede más natural
+  // --------------------------
+  // Construcción de rutas (igual que antes)
+  // --------------------------
   List<RouteNode> buildRoute({
-    required List<Map<String, dynamic>> points, // puntos ya cargados de tu CSV
+    required List<Map<String, dynamic>> points,
     required String hospital,
     required double userLat,
     required double userLon,
   }) {
-    // 1) Filtrar por hospital
     final filtered = <Map<String, dynamic>>[];
     for (final p in points) {
       final hs = (p['hospitals'] ?? '').toString().toLowerCase();
@@ -43,13 +97,18 @@ class ZoneService {
     }
     if (filtered.isEmpty) return [];
 
-    // 2) Parse + ordenar por 'orden'
     final nodes = filtered.map((p) {
       double parseD(v) => double.tryParse(v.toString().replaceAll(',', '.')) ?? 0.0;
       int? parseI(v) => int.tryParse(v?.toString() ?? '');
-      double? parseDNullable(v) => v == null ? null : double.tryParse(v.toString().replaceAll(',', '.'));
+      double? parseDNullable(v) =>
+          v == null ? null : double.tryParse(v.toString().replaceAll(',', '.'));
 
-      final hospList = (p['hospitals'] ?? '').toString().split(';').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+      final hospList = (p['hospitals'] ?? '')
+          .toString()
+          .split(';')
+          .map((e) => e.trim())
+          .where((e) => e.isNotEmpty)
+          .toList();
 
       return RouteNode(
         lat: parseD(p['lat']),
@@ -63,13 +122,8 @@ class ZoneService {
       );
     }).toList();
 
-    nodes.sort((a, b) {
-      final ai = a.orden ?? 0;
-      final bi = b.orden ?? 0;
-      return ai.compareTo(bi);
-    });
+    nodes.sort((a, b) => (a.orden ?? 0).compareTo(b.orden ?? 0));
 
-    // 3) Elegir start cercano al usuario
     int nearestIdx = 0;
     double best = double.infinity;
     for (int i = 0; i < nodes.length; i++) {
@@ -80,8 +134,8 @@ class ZoneService {
       }
     }
 
-    // 4) Elegir candidato a destino (heurística por keywords)
-    final keywords = RegExp(r'(entrada|and[eé]n|acceso|lobby|recepci[oó]n)', caseSensitive: false);
+    final keywords =
+    RegExp(r'(entrada|and[eé]n|acceso|lobby|recepci[oó]n)', caseSensitive: false);
     int? endIdx;
     for (int i = 0; i < nodes.length; i++) {
       final s = ((nodes[i].nombre ?? '') + ' ' + (nodes[i].mensaje ?? '')).toLowerCase();
@@ -90,9 +144,8 @@ class ZoneService {
         break;
       }
     }
-    endIdx ??= nodes.length - 1; // fallback último
+    endIdx ??= nodes.length - 1;
 
-    // 5) Subruta desde nearest -> end (o al revés si end está "antes")
     if (nearestIdx <= endIdx) {
       return nodes.sublist(nearestIdx, endIdx + 1);
     } else {
@@ -102,14 +155,15 @@ class ZoneService {
   }
 }
 
-/// Haversine (metros)
 double _haversineM(double lat1, double lon1, double lat2, double lon2) {
   const R = 6371000.0;
   final dLat = _deg2rad(lat2 - lat1);
   final dLon = _deg2rad(lon2 - lon1);
   final a = math.sin(dLat / 2) * math.sin(dLat / 2) +
-      math.cos(_deg2rad(lat1)) * math.cos(_deg2rad(lat2)) *
-          math.sin(dLon / 2) * math.sin(dLon / 2);
+      math.cos(_deg2rad(lat1)) *
+          math.cos(_deg2rad(lat2)) *
+          math.sin(dLon / 2) *
+          math.sin(dLon / 2);
   final c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
   return R * c;
 }
