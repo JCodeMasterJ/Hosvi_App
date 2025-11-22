@@ -101,3 +101,6 @@ e64b6c22,FOSCA/FCV,Cruce acceso vehicular sobre entrada Acceso de carga CC METRO
 466037a8,FOSCA/FCV,Cruce acceso vehicular sobre entrada Acceso de carga CC METRO (acceso vehicular vado continuacion anden),Calle 33 No. 26-52,7.074499,-73.109556,CRUCE,medio,,,,12,62,CLIN FOSCAL
 ea85981d,FOSCA/FCV,Anden sobre calle 26 curva CC METRO,Cra 26 entre Transv 154 y Avenida Floridablanca,7.074389,-73.109583,VIA CIRCULACION,bajo,,,,12,63,CENTRO MEDICO ARDILA LULE CLINICA FOSCAL
 ed9ca30d,FOSCA/FCV,Anden desde Esquina Transv 154/Cra 26 hasta Esqu CC METRO sobre Avenida Floridablanca,Calle 31/ Cra 26,7.074722,-73.108944,VIA CIRCULACION,bajo,,,,12,64,CENTRO MEDICO ARDILA LULE CLINICA FOSCAL
+utest001,UTEST-PRUEBAS,Punto prueba 1,Esquina Calle 56 con Carrera 27,7.109522984941537,-73.11213735367248,PRUEBA,medio,Atención: punto de referencia para pruebas.,—,corto,12,1,CASA - PRUEBA
+utest002,UTEST-PRUEBAS,Punto prueba 2,Esquina Calle 55 con Carrera 27,7.109359928766202,-73.11107275797106,PRUEBA,medio,Atención: punto de referencia para pruebas.,—,corto,12,2,CASA - PRUEBA
+utest003,UTEST-PRUEBAS,Punto prueba 3,Esquina Calle 52 con Carrera 27,7.107379379982861,-73.11086728712179,PRUEBA,medio,Atención: punto de referencia para pruebas.,—,corto,12,3,CASA - PRUEBA
