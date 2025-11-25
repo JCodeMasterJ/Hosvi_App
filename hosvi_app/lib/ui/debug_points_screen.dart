@@ -8,9 +8,10 @@ import '../data/points_repository.dart';
 // 🔁 Cambia aquí sample ↔ full para probar
 //const String _assetPath = 'assets/data/puntos_full_normalized_arreglado.csv';
 // const String _assetPath = 'assets/data/puntos_sample.csv';
-
 //const String _assetPath = 'assets/data/puntos_hospitales.csv';
-const String _assetPath = 'assets/data/PUNTOS_TOTALES_ACTUALIZADOS.csv';
+//const String _assetPath = 'assets/data/PUNTOS_TOTALES_ACTUALIZADOS.csv';
+const String _assetPath = 'assets/data/POIS_FINAL.csv';
+
 
 final pointsProvider = FutureProvider<List<PointInfo>>((ref) async {
   final repo = PointsRepository(assetPath: _assetPath);

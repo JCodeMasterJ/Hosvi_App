@@ -22,7 +22,7 @@
     "name": "Hospital Universitario de Colombia (HUS)",
     "centers": [
       {"name": "Hospital Universitario de Santander (HUS)", "lat": 7.128220219332462, "lon": -73.11397306116474, "radius_m": 900},
-      {"name": "USTA - PRUEBA", "lat": 7.137167515579143, "lon": -73.12807670534494, "radius_m": 900},
+      {"name": "USTA - PRUEBA", "lat": 7.136734729653264, "lon": -73.1287273990417, "radius_m": 900},
       {"name": "Prueba Casa Pablo", "lat": 7.1099233306203296, "lon": -73.11253354093432, "radius_m": 900},
       {"name": "Prueba Casa conucos", "lat":  7.106572933628658, "lon": -73.11047231157333, "radius_m": 900 }
     ],

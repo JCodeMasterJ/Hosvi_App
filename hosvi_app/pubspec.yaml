@@ -41,4 +41,5 @@ flutter:
     - assets/data/puntos_hospitales.csv
     - assets/data/zones.json
     - assets/data/PUNTOS_TOTALES_ACTUALIZADOS.csv
+    - assets/data/POIS_FINAL.csv
 

@@ -1,185 +1,220 @@
-/*
 // lib/features/voice/poi_announcer.dart
-import 'package:google_maps_flutter/google_maps_flutter.dart';
-import '../voice/tts_service.dart';
-import '../voice/haptics.dart';
+
 import 'dart:math' as math;
-
-// Ajusta este import al lugar real donde está tu RouteNode
-import '../../domain/zones.dart' show RouteNode;
-
-double _haversineM(double lat1, double lon1, double lat2, double lon2) {
-  const R = 6371000.0;
-  final dLat = (lat2 - lat1) * (3.1415926535 / 180.0);
-  final dLon = (lon2 - lon1) * (3.1415926535 / 180.0);
-  final a = math.sin(dLat/2) * math.sin(dLat/2) +
-      math.cos(math.pi * lat1 / 180) * math.cos(math.pi * lat2 / 180) *
-          math.sin(dLon/2) * math.sin(dLon/2);
-
-  final c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
-  return R * c;
-}
-
-class PoiAnnouncer {
-  final TtsService tts;
-  final Haptics haptics;
-  final _cooldown = <String, DateTime>{};
-  final Duration minGap = const Duration(minutes: 2);
-
-  PoiAnnouncer(this.tts, this.haptics);
-
-  /// Llama esto en cada actualización de ubicación
-  void checkPois(LatLng user, Iterable<RouteNode> pois) {
-    final now = DateTime.now();
-
-    for (final p in pois) {
-      // PROPIEDADES: adapta si en tu modelo se llaman diferente
-      final String id   = (p as dynamic).id ?? '${p.lat},${p.lon}';
-      final String? hint = (p as dynamic).audioHint ?? p.mensaje;
-      final String? vib  = (p as dynamic).vibroPatron; // 'corto', 'doble', 'largo'
-      final double r     = (p.radioM ?? 12).toDouble();
-
-      final last = _cooldown[id];
-      if (last != null && now.difference(last) < minGap) continue;
-
-      final d = _haversineM(user.latitude, user.longitude, p.lat, p.lon);
-      if (d <= r) {
-        final msg = (hint ?? '').trim();
-        if (msg.isNotEmpty) tts.speak(msg);
-        if (vib == 'doble')      haptics.double();
-        else if (vib == 'largo') haptics.long();
-        else                     haptics.short();
-        _cooldown[id] = now;
-      }
-    }
-  }
-}
-*/
-// lib/features/voice/poi_announcer.dart
-import 'dart:math' as math;
-
 import '../../domain/zones.dart' show RouteNode;
 import 'tts_service.dart';
 import 'haptics.dart';
 
-double _havM(double lat1, double lon1, double lat2, double lon2) {
+double _distM(double aLat, double aLon, double bLat, double bLon) {
   const R = 6371000.0;
-  final dLat = (lat2 - lat1) * (math.pi / 180.0);
-  final dLon = (lon2 - lon1) * (math.pi / 180.0);
-  final a = math.sin(dLat / 2) * math.sin(dLat / 2) +
-      math.cos(lat1 * (math.pi / 180.0)) *
-          math.cos(lat2 * (math.pi / 180.0)) *
-          math.sin(dLon / 2) * math.sin(dLon / 2);
-  final c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
-  return R * c;
+  final dLat = (bLat - aLat) * (math.pi / 180);
+  final dLon = (bLon - aLon) * (math.pi / 180);
+  final x = math.sin(dLat / 2);
+  final y = math.sin(dLon / 2);
+  final h = x * x +
+      math.cos(aLat * (math.pi / 180)) *
+          math.cos(bLat * (math.pi / 180)) *
+          y * y;
+  return R * 2 * math.atan2(math.sqrt(h), math.sqrt(1 - h));
 }
 
-/// Anuncia POIs cercanos con voz + vibración.
-/// Se usa así:
-///   final _poi = PoiAnnouncer(
-///     tts: _tts, haptics: _haptics,
-///     getVisiblePois: () => _visiblePois,
-///     speakNearMeters: 18,
-///     minSpeakGap: const Duration(seconds: 18),
-///   );
-///   ...
-///   _poi.updateUserPos(_userLat!, _userLon!);  // en cada tick del GPS
+/// ---------------------------------------------------------------------------
+///  POI ANNOUNCER – VERSIÓN PRO
+///  - Prioriza POIs sobre navegación
+///  - Pausa navegación mientras anuncia
+///  - Anti-spam seguro
+/// ---------------------------------------------------------------------------
 class PoiAnnouncer {
   final TtsService tts;
   final Haptics haptics;
+
+  /// Devuelve POIs visibles filtrados por zona + hospital
   final Iterable<RouteNode> Function() getVisiblePois;
+
+  /// Radio estándar si el POI no trae radio
   final double speakNearMeters;
+
+  /// Mínimo tiempo entre anuncios del mismo POI
   final Duration minSpeakGap;
+
+  /// Si está muteado (p. ej., mientras anuncia navegación)
   bool isMuted = false;
 
-  // Anti-spam por POI
+  /// Si debemos bloquear navegación mientras se anuncia un POI
+  final void Function(Duration) onInterruptNavigation;
+
+  /// Registro de última vez que se habló cada POI
   final Map<String, DateTime> _cooldown = {};
 
   PoiAnnouncer({
     required this.tts,
     required this.haptics,
     required this.getVisiblePois,
-    this.speakNearMeters = 18,
-    this.minSpeakGap = const Duration(seconds: 18),
+    required this.onInterruptNavigation,
+    this.speakNearMeters = 16,
+    this.minSpeakGap = const Duration(seconds: 15),
   });
 
   double? _uLat, _uLon;
 
-  /// Llama esto en cada actualización de ubicación
+  // ---------------------------------------------------------------------------
+  // Se llama en cada update de GPS
+  // ---------------------------------------------------------------------------
   void updateUserPos(double lat, double lon) {
     _uLat = lat;
     _uLon = lon;
-    _checkAndAnnounce();
+
+    if (!isMuted) _checkPois();
   }
 
-  void muteFor(Duration dur) {
+  // ---------------------------------------------------------------------------
+  // Mute externo para navegación (turn-by-turn)
+  // ---------------------------------------------------------------------------
+  void muteFor(Duration d) {
     isMuted = true;
-    Future.delayed(dur, () => isMuted = false);
+    Future.delayed(d, () => isMuted = false);
   }
 
-
-  // --- Interno --------------------------------------------------------------
-
-  void _checkAndAnnounce() {
-    if (isMuted) return;
+  // ---------------------------------------------------------------------------
+  // Lógica principal
+  // ---------------------------------------------------------------------------
+  void _checkPois() {
     if (_uLat == null || _uLon == null) return;
 
     final now = DateTime.now();
-    final pois = getVisiblePois(); // lo que definiste en map_screen
+    final pois = getVisiblePois();
+
+    // Log global
+    // ignore: avoid_print
+    print('[HOSVI][POI] visibles=${pois.length} user=($_uLat,$_uLon)');
 
     for (final p in pois) {
-      // Campos flexibles (por si tu RouteNode tiene nombres distintos)
-      final String id = _safeId(p);
-      final String? msg = _safeMsg(p);
-      final String? vib = _safeVib(p);
-      final double r = _safeRadio(p) ?? speakNearMeters;
+      final id = _safeId(p);
+      final msg = _safeMsg(p);
+      final vib = _safeVib(p);
+      final r = _safeRadius(p);
 
-      // cooldown por POI
+      // Anti-spam
       final last = _cooldown[id];
-      if (last != null && now.difference(last) < minSpeakGap) continue;
-
-      final d = _havM(_uLat!, _uLon!, p.lat, p.lon);
-      if (d <= r) {
-        if (msg != null && msg.trim().isNotEmpty) {
-          tts.speak(msg.trim());           // frase corta y clara
-        }
-        // patrón simple de vibración (ajusta a tu Haptics si usas otros nombres)
-        switch ((vib ?? 'corto').toLowerCase()) {
-          case 'doble':
-          case 'double':
-            haptics.double();
-            break;
-          case 'largo':
-            haptics.long();
-            break;
-          default:
-            haptics.short();
-        }
-        _cooldown[id] = now;
+      if (last != null && now.difference(last) < minSpeakGap) {
+        // ignore: avoid_print
+        print('[HOSVI][POI] skip cooldown id=$id');
+        continue;
       }
+
+      // Distancia
+      final d = _distM(_uLat!, _uLon!, p.lat, p.lon);
+
+      // ignore: avoid_print
+      print('[HOSVI][POI] id=$id dist=${d.toStringAsFixed(1)} '
+          'r=$r msg=${msg ?? "(sin msg)"} vib=$vib');
+
+      if (d > r) continue;
+
+      // ---------------------------------------------------------------------
+      // ANUNCIAR POI
+      // ---------------------------------------------------------------------
+      if (msg != null && msg.isNotEmpty) {
+        onInterruptNavigation(const Duration(seconds: 2)); // 🔥 PÁRATE NAVEGACIÓN
+        // ignore: avoid_print
+        print('[HOSVI][POI] 🎧 hablando id=$id: $msg');
+        tts.speak(msg);
+      }
+
+      // Vibración
+      switch (vib) {
+        case 'doble':
+        case 'double':
+          haptics.double();
+          break;
+        case 'largo':
+          haptics.long();
+          break;
+        default:
+          haptics.short();
+      }
+
+      _cooldown[id] = now;
     }
   }
 
-  // --- Helpers de adaptación (no rompen si cambian los nombres) -------------
+  // ---------------------------------------------------------------------------
+  // Helpers seguros para campos opcionales en el CSV
+  // ---------------------------------------------------------------------------
 
   String _safeId(RouteNode p) {
-    // si en tu RouteNode existe un `id`, úsalo; si no, lat/lon como fallback
     try {
       final dyn = (p as dynamic);
-      final val = dyn.id?.toString();
-      if (val != null && val.isNotEmpty) return val;
+      if (dyn.id != null) return dyn.id.toString();
     } catch (_) {}
     return '${p.lat},${p.lon}';
   }
 
+  /// Prioridad:
+  /// 1. mensaje
+  /// 2. audioHint / audio_hint
+  /// 3. msg
+  /// 4. campos dentro de maps extra/extras/props
   String? _safeMsg(RouteNode p) {
+    String _clean(dynamic v) =>
+        v == null ? '' : v.toString().trim();
+
     try {
-      final dyn = (p as dynamic);
-      if (dyn.audioHint != null && dyn.audioHint.toString().trim().isNotEmpty) {
-        return dyn.audioHint.toString();
+      final dyn = p as dynamic;
+
+      // 1) Campos directos en el objeto
+      final directCandidates = <String>[
+        _clean(_tryField(dyn, 'mensaje')),
+        _clean(_tryField(dyn, 'audioHint')),
+        _clean(_tryField(dyn, 'audio_hint')),
+        _clean(_tryField(dyn, 'msg')),
+      ];
+
+      for (final c in directCandidates) {
+        if (c.isNotEmpty) return c;
       }
-      if (dyn.mensaje != null && dyn.mensaje.toString().trim().isNotEmpty) {
-        return dyn.mensaje.toString();
+
+      // 2) Campos dentro de mapas tipo extra/extras/props
+      dynamic extra;
+      try {
+        extra = _tryField(dyn, 'extra') ??
+            _tryField(dyn, 'extras') ??
+            _tryField(dyn, 'props');
+      } catch (_) {}
+
+      if (extra is Map) {
+        final fromMap = <String>[
+          _clean(extra['mensaje']),
+          _clean(extra['audio_hint']),
+          _clean(extra['audioHint']),
+        ];
+        for (final c in fromMap) {
+          if (c.isNotEmpty) return c;
+        }
+      }
+    } catch (_) {}
+
+    return null;
+  }
+
+  // Intenta acceder a un campo concreto, pero sin reventar si no existe
+  dynamic _tryField(dynamic dyn, String fieldName) {
+    try {
+      switch (fieldName) {
+        case 'mensaje':
+          return dyn.mensaje;
+        case 'audioHint':
+          return dyn.audioHint;
+        case 'audio_hint':
+          return dyn.audio_hint;
+        case 'msg':
+          return dyn.msg;
+        case 'extra':
+          return dyn.extra;
+        case 'extras':
+          return dyn.extras;
+        case 'props':
+          return dyn.props;
       }
     } catch (_) {}
     return null;
@@ -188,16 +223,32 @@ class PoiAnnouncer {
   String? _safeVib(RouteNode p) {
     try {
       final dyn = (p as dynamic);
-      if (dyn.vibroPatron != null) return dyn.vibroPatron.toString();
+      if (dyn.vibroPatron != null &&
+          dyn.vibroPatron.toString().trim().isNotEmpty) {
+        return dyn.vibroPatron.toString();
+      }
+
+      // Si viene en algún mapa extra
+      final extra =
+          _tryField(dyn, 'extra') ?? _tryField(dyn, 'extras') ?? _tryField(dyn, 'props');
+      if (extra is Map && extra['vibro_patron'] != null) {
+        return extra['vibro_patron'].toString();
+      }
     } catch (_) {}
-    return null; // usa el default "corto"
+    return 'corto';
   }
 
-  double? _safeRadio(RouteNode p) {
+  double _safeRadius(RouteNode p) {
     try {
       final dyn = (p as dynamic);
       if (dyn.radioM != null) return (dyn.radioM as num).toDouble();
+
+      final extra =
+          _tryField(dyn, 'extra') ?? _tryField(dyn, 'extras') ?? _tryField(dyn, 'props');
+      if (extra is Map && extra['radio_m'] != null) {
+        return (extra['radio_m'] as num).toDouble();
+      }
     } catch (_) {}
-    return null;
+    return speakNearMeters;
   }
 }
