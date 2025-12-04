@@ -78,7 +78,7 @@ class PoiAnnouncer {
   // ---------------------------------------------------------------------------
   // Lógica principal
   // ---------------------------------------------------------------------------
-  void _checkPois() {
+  /*void _checkPois() {
     if (_uLat == null || _uLon == null) return;
 
     final now = DateTime.now();
@@ -136,6 +136,88 @@ class PoiAnnouncer {
 
       _cooldown[id] = now;
     }
+  }*/
+  void _checkPois() {
+    if (_uLat == null || _uLon == null) return;
+
+    final now = DateTime.now();
+    final pois = getVisiblePois();
+
+    // 👀 Log global
+    print('[HOSVI][POI] visibles=${pois.length} user=($_uLat,$_uLon)');
+
+    // Radios fijos para “cerca” y “llegaste”
+    const double nearRadius = 8.0;   // aviso de aproximación
+    const double arriveRadius = 2.0; // aviso de llegada
+
+    for (final p in pois) {
+      final id = _safeId(p);
+      final msg = _safeMsg(p);      // mensaje del CSV (tu “Atención: …”)
+      final vib = _safeVib(p);
+      final rCsv = _safeRadius(p);  // radio_m del CSV (12, 25, etc.)
+
+      // Distancia usuario–POI
+      final d = _distM(_uLat!, _uLon!, p.lat, p.lon);
+
+      // Decidimos qué tipo de aviso toca
+      String? texto;
+      String? cooldownKey; // para manejar cooldown separado por etapa (near / arrive)
+
+      if (d <= arriveRadius) {
+        // 🟢 MENSAJE DE LLEGADA
+        final nombre = _safeName(p);
+        texto = 'Has llegado a $nombre.';
+        cooldownKey = '${id}_arr';
+      } else if (d <= nearRadius) {
+        // 🟡 MENSAJE DE APROXIMACIÓN (usa tu mensaje del CSV)
+        if (msg != null && msg.isNotEmpty) {
+          texto = msg;
+          cooldownKey = '${id}_near';
+        }
+      } else if (d <= rCsv) {
+        // Zona más amplia: si quieres que también hable ahí, usamos el mismo msg
+        if (msg != null && msg.isNotEmpty) {
+          texto = msg;
+          cooldownKey = '${id}_near';
+        }
+      }
+
+      // Log de debug
+      print('[HOSVI][POI] id=$id dist=${d.toStringAsFixed(1)} '
+          'rCsv=$rCsv msg=${msg ?? "(sin msg)"} vib=$vib');
+
+      // Si no hay nada que decir, sigue al siguiente POI
+      if (texto == null) continue;
+
+      // 🔁 Anti-spam por etapa (near / arrive)
+      final last = _cooldown[cooldownKey];
+      if (last != null && now.difference(last) < minSpeakGap) {
+        print('[HOSVI][POI] skip cooldown etapa=$cooldownKey id=$id');
+        continue;
+      }
+
+      // -----------------------------------------------------------------
+      // ANUNCIAR TEXTO
+      // -----------------------------------------------------------------
+      onInterruptNavigation(const Duration(seconds: 2));
+      print('[HOSVI][POI] 🎧 hablando $cooldownKey id=$id: $texto');
+      tts.speak(texto);
+
+      // Vibración
+      switch (vib) {
+        case 'doble':
+        case 'double':
+          haptics.double();
+          break;
+        case 'largo':
+          haptics.long();
+          break;
+        default:
+          haptics.short();
+      }
+
+      _cooldown[cooldownKey!] = now;
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -148,6 +230,15 @@ class PoiAnnouncer {
       if (dyn.id != null) return dyn.id.toString();
     } catch (_) {}
     return '${p.lat},${p.lon}';
+  }
+  String _safeName(RouteNode p) {
+    try {
+      final dyn = (p as dynamic);
+      if (dyn.nombre != null && dyn.nombre.toString().trim().isNotEmpty) {
+        return dyn.nombre.toString().trim();
+      }
+    } catch (_) {}
+    return 'el punto indicado';
   }
 
   /// Prioridad:
