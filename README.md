@@ -53,7 +53,7 @@ This project uses **Flutter**, **Firebase Authentication**, **Firestore**, and m
 
 ## 📸 Screenshots
 
-<p align="center"> <strong>Vista principal del mapa — navegación accesible</strong><br> <img src="assets/screenshot/mapa.jpeg" alt="Mapa principal HOSVI" width="320"/> </p> <p align="center"> <strong>Panel de administración — gestión de zonas y puntos</strong><br> <img src="assets/screenshot/admin.jpeg" alt="Panel de administración HOSVI" width="320"/> </p> <p align="center"> <strong>Opciones de accesibilidad — alto contraste, tamaño y velocidad de voz</strong><br> <img src="assets/screenshot/accesibilidad.jpeg" alt="Accesibilidad HOSVI" width="320"/> </p>
+<p align="center"> <strong>Vista principal del mapa — navegación accesible</strong><br> <img src="hosvi_app/assets/screenshot/mapa.jpeg" alt="Mapa principal HOSVI" width="320"/> </p> <p align="center"> <strong>Panel de administración — gestión de zonas y puntos</strong><br> <img src="hosvi_app/assets/screenshot/admin.jpeg" alt="Panel de administración HOSVI" width="320"/> </p> <p align="center"> <strong>Opciones de accesibilidad — alto contraste, tamaño y velocidad de voz</strong><br> <img src="hosvi_app/assets/screenshot/accesibilidad.jpeg" alt="Accesibilidad HOSVI" width="320"/> </p>
 
 ---
 
